@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brain Tumor MRI Classifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: reading-room look. Sticky top bar, hero with a two-pane scan viewer (input | Grad-CAM overlay),
+   then a sequence of full-width bands: overview, pipeline, models, explainability, evaluation, run, limits. */
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --ink:#0E1A22; --muted:#53656F; --line:#D3DCE2;
+  --accent:#0B7A86; --accent-ink:#FFFFFF; --accent-soft:#DDEFF1;
+  --warn:#9A4A06; --warn-bg:#FBEBD8; --code-bg:#0E1A22; --code-ink:#DCE9EF;
+  --scan:#050709;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0A1218; --surface:#111C24; --ink:#E5EEF2; --muted:#8FA3AF; --line:#24343E;
+  --accent:#3DC6D0; --accent-ink:#06191C; --accent-soft:#123038;
+  --warn:#F2A650; --warn-bg:#2B2012; --code-bg:#070D11; --code-ink:#D3E3EA; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0A1218; --surface:#111C24; --ink:#E5EEF2; --muted:#8FA3AF; --line:#24343E;
+  --accent:#3DC6D0; --accent-ink:#06191C; --accent-soft:#123038;
+  --warn:#F2A650; --warn-bg:#2B2012; --code-bg:#070D11; --code-ink:#D3E3EA; color-scheme:dark;}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{font-family:var(--f-display);line-height:1.12;text-wrap:balance;margin:0;letter-spacing:-.01em}
+h2{font-size:clamp(1.7rem,3.4vw,2.3rem);font-weight:700}
+h3{font-size:1.15rem;font-weight:700}
+p{margin:0}
+.wrap{max-width:1120px;margin:0 auto}
+.eyebrow{font:500 .75rem/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.lede{color:var(--muted);max-width:62ch;font-size:1.05rem}
+section{padding-block:72px;scroll-margin-top:96px}
+.band{border-top:1px solid var(--line)}
+.sec-head{display:grid;gap:12px;margin-bottom:36px}
+
+/* top bar */
+header.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line);margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px))) ;padding-inline:max(16px,env(safe-area-inset-left,0px))}
+.bar-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:20px;min-height:56px;flex-wrap:wrap;padding-block:6px}
+.brand{font:700 1rem var(--f-display);color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.brand i{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 50% 45%,var(--accent) 0 28%,transparent 30%),var(--accent-soft);border:2px solid var(--accent);display:inline-block}
+nav{display:flex;gap:4px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:6px;font-size:.9rem;white-space:nowrap}
+nav a:hover{color:var(--ink);background:var(--accent-soft)}
+.icon-btn{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:1rem}
+.icon-btn:hover{border-color:var(--accent)}
+
+/* hero */
+.hero{padding-block:56px 40px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:48px;align-items:center}
+.hero h1{font-size:clamp(2.4rem,5.6vw,4rem);font-weight:700;margin:16px 0 18px}
+.hero .lede{margin-bottom:24px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+.chip{font:500 .8rem var(--f-mono);padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink)}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.btn{font:600 .95rem var(--f-body);padding:11px 20px;border-radius:8px;text-decoration:none;border:1px solid var(--accent);display:inline-block}
+.btn.p{background:var(--accent);color:var(--accent-ink)}
+.btn.s{color:var(--accent);background:transparent}
+.btn:hover{filter:brightness(1.08)}
+
+.viewer{background:var(--scan);border-radius:12px;padding:14px;color:#C9D6DD;border:1px solid #1B2A33}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pane{min-width:0}
+.pane canvas{width:100%;aspect-ratio:1;display:block;border-radius:6px;background:#000}
+.pane figcaption{font:500 .7rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;margin-top:6px;color:#8FA3AF}
+.vctl{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;margin-top:14px;font-size:.85rem}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{background:#0F1B22;color:#C9D6DD;border:1px solid #24343E;border-radius:6px;padding:6px 10px;font:500 .8rem var(--f-mono);cursor:pointer}
+.seg button[aria-pressed="true"]{background:#3DC6D0;color:#06191C;border-color:#3DC6D0}
+.vctl label{display:flex;align-items:center;gap:8px;font:500 .8rem var(--f-mono);color:#C9D6DD}
+.vctl input[type=range]{accent-color:#3DC6D0;width:110px}
+.vnote{font-size:.75rem;color:#8FA3AF;margin-top:10px;line-height:1.45}
+.heat-key{height:8px;border-radius:4px;background:linear-gradient(90deg,#00008f,#0000ff,#00ffff,#ffff00,#ff0000,#800000);margin-top:12px}
+.heat-key+div{display:flex;justify-content:space-between;font:500 .68rem var(--f-mono);color:#8FA3AF;margin-top:4px}
+
+.notice{background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:10px;padding:14px 18px;font-size:.95rem;display:flex;gap:12px;align-items:flex-start}
+.notice b{font-weight:600}
+
+/* facts */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-top:28px}
+.fact{padding:20px 22px;border-right:1px solid var(--line)}
+.fact:last-child{border-right:0}
+.fact b{display:block;font:700 1.9rem/1 var(--f-display);color:var(--accent);font-variant-numeric:tabular-nums}
+.fact span{display:block;margin-top:8px;font-size:.85rem;color:var(--muted)}
+
+/* overview */
+.trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px}
+.trio h3{margin-bottom:8px}
+.trio p{color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font:500 .72rem var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--bg);white-space:nowrap}
+td code,p code,li code,summary code{font:500 .85em var(--f-mono);background:var(--accent-soft);padding:2px 6px;border-radius:4px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px}
+.stack{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.files div{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;min-width:0}
+.files code{font:500 .85rem var(--f-mono);color:var(--accent);white-space:nowrap}
+.files span{color:var(--muted);font-size:.88rem}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:48px;align-items:start}
+ol.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:grid;gap:0}
+ol.steps li{counter-increment:s;position:relative;padding:0 0 22px 48px;border-left:0}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:32px;height:32px;border-radius:50%;background:var(--surface);border:1.5px solid var(--accent);color:var(--accent);font:500 .85rem/29px var(--f-mono);text-align:center}
+ol.steps li::after{content:"";position:absolute;left:15.5px;top:36px;bottom:4px;width:1px;background:var(--line)}
+ol.steps li:last-child::after{display:none}
+ol.steps b{display:block;font-weight:600;margin-bottom:2px}
+ol.steps span{color:var(--muted);font-size:.93rem}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px}
+.panel h3{margin-bottom:6px}
+.panel .sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+.ctrls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.ctrls label,.mx label{display:grid;gap:4px;font:500 .72rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+input[type=number],select{font:500 .95rem var(--f-mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%;min-width:0}
+svg{display:block;max-width:100%;height:auto}
+.chart text{fill:var(--muted);font:400 11px var(--f-mono)}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.readout{font:500 .85rem var(--f-mono);color:var(--ink);margin-top:10px;min-height:1.4em}
+.hp{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0;margin-top:40px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.hp div{padding:14px 18px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;font-size:.9rem}
+.hp span{color:var(--muted)}
+.hp b{font:500 .85rem var(--f-mono);text-align:right}
+
+/* models */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+.tabs button{font:500 .85rem var(--f-mono);padding:9px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.model{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:40px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px}
+.model h3{font-size:1.6rem;margin-bottom:10px}
+.model p{color:var(--muted)}
+dl.kv{margin:0;display:grid;gap:0}
+dl.kv div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+dl.kv div:last-child{border-bottom:0}
+dl.kv dt{color:var(--muted);font:500 .72rem/1.8 var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+dl.kv dd{margin:0;overflow-wrap:anywhere}
+.cmd{font:500 .85rem var(--f-mono);background:var(--code-bg);color:var(--code-ink);padding:10px 14px;border-radius:8px;display:block;margin-top:16px;overflow-x:auto;white-space:pre}
+
+/* explain */
+.formula{font:500 1rem var(--f-mono);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:18px 0;overflow-x:auto;white-space:nowrap}
+.read{display:grid;gap:14px}
+.read div{padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.read b{display:block;margin-bottom:4px}
+.read p{color:var(--muted);font-size:.93rem}
+.good b{color:var(--accent)}
+.bad b{color:var(--warn)}
+
+/* evaluation */
+.mx{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+.cm{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px;align-items:stretch;font-size:.8rem}
+.cm .h{font:500 .68rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);align-self:center;text-align:center}
+.cm label{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+.cm label.fn{border-color:var(--warn)}
+.cm input{margin-top:2px}
+.out{display:grid;gap:10px;align-content:start}
+.m{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:baseline}
+.m b{font:700 1.5rem var(--f-display);font-variant-numeric:tabular-nums}
+.m span{font-size:.9rem}
+.m small{grid-column:1/-1;color:var(--muted);font-size:.8rem}
+.bar2{grid-column:1/-1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar2 i{display:block;height:100%;background:var(--accent)}
+.eg{font:500 .72rem var(--f-mono);letter-spacing:.06em;color:var(--warn);text-transform:uppercase;margin-bottom:12px}
+
+/* run */
+.run{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.4fr);gap:20px 40px;padding-block:22px;border-top:1px solid var(--line)}
+.run:first-of-type{border-top:0;padding-top:0}
+.run h3{margin-bottom:6px}
+.run p{color:var(--muted);font-size:.93rem}
+.code{position:relative;min-width:0}
+.code pre{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:16px 84px 16px 18px;overflow-x:auto;font:400 .85rem/1.65 var(--f-mono)}
+.code .cp{position:absolute;top:10px;right:10px;font:500 .72rem var(--f-mono);background:#1E3340;color:#DCE9EF;border:1px solid #2D4756;border-radius:6px;padding:5px 10px;cursor:pointer}
+.code .cp:hover{background:#2A4759}
+.sub-h{margin:56px 0 16px}
+details{border-bottom:1px solid var(--line);padding:14px 0}
+details:first-of-type{border-top:1px solid var(--line)}
+summary{cursor:pointer;font-weight:500;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::after{content:"+";font:500 1.1rem var(--f-mono);color:var(--accent)}
+details[open] summary::after{content:"\2212"}
+details p{margin-top:8px;color:var(--muted);font-size:.93rem}
+.appmock{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:.85rem}
+.appmock .col{border:1px dashed var(--line);border-radius:8px;padding:14px;display:grid;gap:8px;align-content:start}
+.appmock .col b{font:500 .7rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.appmock .btnm{background:var(--accent);color:var(--accent-ink);padding:8px;border-radius:6px;text-align:center;font-weight:600}
+
+/* limits */
+.lim{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.lim div{border-top:2px solid var(--accent);padding-top:14px}
+.lim h3{margin-bottom:6px;font-size:1.05rem}
+.lim p{color:var(--muted);font-size:.93rem}
+ul.plain{margin:0;padding-left:1.1em;color:var(--muted)}
+ul.plain li{margin-bottom:6px}
+footer{border-top:1px solid var(--line);padding-block:40px 56px;color:var(--muted);font-size:.9rem;display:grid;gap:10px}
+footer b{color:var(--ink)}
+
+@media (max-width:860px){
+  .hero,.pipe,.split,.model,.mx,.run{grid-template-columns:minmax(0,1fr)}
+  .hero{gap:32px;padding-block:32px}
+  section{padding-block:52px}
+  .appmock{grid-template-columns:1fr}
+  .brand{flex:1}
+  nav{order:3;flex-basis:100%}
+  .fact{border-right:0;border-bottom:1px solid var(--line)}
+  dl.kv div{grid-template-columns:100px minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* ===== v2: product-site layer ===== */
+:root{--accent2:#4F46E5;--glow:rgba(11,122,134,.14);--glow2:rgba(79,70,229,.10);--star:#E0A100}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent2:#8E9BFF;--glow:rgba(61,198,208,.12);--glow2:rgba(142,155,255,.10);--star:#F5B301}}
+:root[data-theme="dark"]{--accent2:#8E9BFF;--glow:rgba(61,198,208,.12);--glow2:rgba(142,155,255,.10);--star:#F5B301}
+body{background-color:var(--bg);background-image:radial-gradient(900px 420px at 85% 40px,var(--glow),transparent 70%),radial-gradient(700px 380px at 5% 200px,var(--glow2),transparent 70%);background-repeat:no-repeat}
+.ic{width:20px;height:20px;flex:none;vertical-align:-4px}
+.ic.sm{width:14px;height:14px;vertical-align:-2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.grad{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sec-head.c{text-align:center;justify-items:center}
+.sec-head.c .lede{margin-inline:auto}
+
+/* announcement + nav */
+.topnotice{margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px)));padding:8px max(16px,env(safe-area-inset-left,0px));background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;font-size:.82rem;display:flex;gap:8px;justify-content:center;align-items:center;text-align:center}
+.topnotice .ic{width:16px;height:16px}
+header.bar{box-shadow:0 1px 0 var(--line),0 8px 24px -18px rgba(0,0,0,.35)}
+.bar-in{gap:14px;min-height:64px;flex-wrap:nowrap}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:grid;place-items:center}
+.logo .ic{width:20px;height:20px}
+.brand i{display:none}
+nav{justify-content:center;gap:2px}
+nav a{font-weight:500;position:relative}
+nav a.on{color:var(--accent);background:var(--accent-soft)}
+.nav-cta{padding:9px 16px;font-size:.88rem;white-space:nowrap}
+.menu-btn{display:none;place-items:center}
+.menu-btn .ic{margin:auto}
+.btn{display:inline-flex;align-items:center;gap:8px}
+.btn.p{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,var(--accent2)));border-color:transparent;box-shadow:0 6px 18px -8px var(--accent)}
+.btn.s{background:var(--surface)}
+
+/* hero */
+.pill{display:inline-flex;align-items:center;gap:8px;font:500 .8rem var(--f-body);padding:6px 12px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.pill .ic{width:15px;height:15px}
+.hero h1{margin-top:18px}
+.trust{list-style:none;display:flex;flex-wrap:wrap;gap:8px 20px;padding:0;margin:26px 0 0;color:var(--muted);font-size:.9rem}
+.trust li{display:flex;gap:6px;align-items:center}
+.trust .ic{color:var(--accent);width:18px;height:18px}
+.viewer{box-shadow:0 30px 60px -30px rgba(10,30,50,.55)}
+.vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font:500 .72rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#8FA3AF}
+.vhead i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#2B3B45;margin-right:6px}
+
+/* stats */
+.fact{display:grid;gap:4px;align-content:start}
+.fi{width:38px;height:38px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid!important;place-items:center;margin:0 0 10px!important}
+.fi .ic{width:20px;height:20px}
+.fact>span:last-child{margin-top:4px}
+
+/* features */
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.feat article,.aud>div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;transition:transform .2s,border-color .2s,box-shadow .2s}
+.feat article:hover,.aud>div:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 14px 30px -18px var(--accent)}
+.feat h3,.aud h3{margin:16px 0 8px}
+.feat p,.aud p{color:var(--muted);font-size:.95rem}
+.ficon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center}
+.ficon .ic{width:24px;height:24px}
+.ficon.a{background:var(--accent-soft);color:var(--accent)}
+.ficon.b{background:color-mix(in srgb,var(--accent2) 14%,var(--surface));color:var(--accent2)}
+.ficon.c{background:var(--warn-bg);color:var(--warn)}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0;margin-top:56px;border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.step{padding:26px;border-right:1px solid var(--line);position:relative}
+.step:last-child{border-right:0}
+.step .n{position:absolute;top:18px;right:20px;font:500 .8rem var(--f-mono);color:var(--muted)}
+.step>.ic{width:28px;height:28px;color:var(--accent)}
+.step h3{margin:14px 0 6px}
+.step p{color:var(--muted);font-size:.92rem}
+.aud{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:20px}
+
+/* faq */
+.faq{max-width:820px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px 26px}
+.faq details:first-of-type{border-top:0}
+.faq details:last-of-type{border-bottom:0}
+.faq summary{padding-block:4px;font-weight:600}
+.faq details p{margin:8px 0 6px;line-height:1.65}
+
+/* feedback */
+.fbwrap{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr);gap:48px;align-items:start}
+.fbpts{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:12px;color:var(--muted)}
+.fbpts li{display:flex;gap:10px;align-items:flex-start}
+.fbpts .ic{color:var(--accent);margin-top:2px}
+.fb{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;display:grid;gap:16px;box-shadow:0 24px 40px -32px rgba(10,30,50,.5)}
+.fb .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:end}
+.fb label,.rate>span{display:grid;gap:6px;font:500 .82rem var(--f-body);color:var(--muted)}
+.fb input[type=text],.fb input[type=email],.fb select,.fb textarea{font:400 .95rem var(--f-body);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;min-width:0}
+.fb textarea{resize:vertical;min-height:120px}
+.fb input:focus-visible,.fb select:focus-visible,.fb textarea:focus-visible{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+.stars{display:inline-flex;flex-direction:row-reverse;justify-content:flex-end;position:relative}
+.stars input{position:absolute;opacity:0;width:1px;height:1px}
+.stars label{display:block;font-size:1.7rem;line-height:1;color:var(--line);cursor:pointer;padding:0 2px;font-weight:400}
+.stars input:checked~label,.stars label:hover,.stars label:hover~label{color:var(--star)}
+.stars input:focus-visible+label{outline:2px solid var(--accent);border-radius:4px}
+.fb-foot{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.fb-foot .btn{cursor:pointer;font-family:var(--f-body)}
+.fb-foot .btn[disabled]{opacity:.6;cursor:progress}
+#fb-status{font-size:.9rem;color:var(--muted);flex:1;min-width:200px}
+#fb-status.ok{color:var(--accent);font-weight:500}
+#fb-status.err{color:var(--warn)}
+
+/* footer */
+.foot{display:block!important;border-top:1px solid var(--line);padding-block:56px 40px}
+.fgrid{display:grid;grid-template-columns:1.5fr repeat(4,1fr);gap:32px}
+.fgrid h4{font:600 .8rem var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);margin:0 0 12px}
+.fgrid a:not(.brand){display:flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;padding:4px 0;font-size:.92rem}
+.fgrid a:not(.brand):hover{color:var(--accent)}
+.fbase{border-top:1px solid var(--line);margin-top:36px;padding-top:24px;display:grid;gap:10px;font-size:.85rem;color:var(--muted)}
+.fbase b{color:var(--ink)}
+.totop{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:44px;height:44px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;box-shadow:0 8px 20px -6px rgba(0,0,0,.5);z-index:25}
+.totop .ic{margin:auto}
+.totop[hidden]{display:none}
+
+@media (max-width:1000px){
+  .bar-in{flex-wrap:wrap}
+  .nav-cta{display:none}
+  .menu-btn{display:grid}
+  .brand{flex:1}
+  nav{display:none;order:5;flex-basis:100%;flex-direction:column;align-items:stretch;overflow:visible;padding:8px 0 12px;border-top:1px solid var(--line)}
+  nav.open{display:flex}
+  nav a{padding:12px 10px;font-size:1rem}
+  .fgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .fbwrap{grid-template-columns:minmax(0,1fr);gap:32px}
+  .fb .two{grid-template-columns:minmax(0,1fr)}
+  .step{border-right:0;border-bottom:1px solid var(--line)}
+  .faq{padding:2px 16px}
+  nav{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){.feat article,.aud>div{transition:none}.feat article:hover,.aud>div:hover{transform:none}}
+
+/* ===== v3: working analyser ===== */
+.try{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px;align-items:start}
+.drop{display:grid;place-items:center;gap:10px;text-align:center;min-height:300px;border:2px dashed var(--line);border-radius:14px;background:var(--surface);padding:24px;cursor:pointer;transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop .ic{width:34px;height:34px;color:var(--accent)}
+.drop b{font:600 1.05rem var(--f-display)}
+.drop small{color:var(--muted)}
+.drop img{max-width:100%;max-height:300px;border-radius:8px;display:none;background:#000}
+.drop.has img{display:block}.drop.has .ph{display:none}
+.try-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.try-actions .btn{cursor:pointer;font-family:var(--f-body)}
+.try-actions .btn[disabled]{opacity:.55;cursor:not-allowed}
+.srv{font-size:.85rem;color:var(--muted);margin-top:12px}
+.srv.bad{color:var(--warn)}
+.res{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;min-height:300px}
+.res .empty{color:var(--muted);display:grid;place-items:center;text-align:center;min-height:250px}
+.res h3{font-size:1.5rem}
+.res .conf{color:var(--muted);margin:4px 0 16px}
+.res .imgs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.res .imgs figure{margin:0}
+.res .imgs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:#000;display:block}
+.res figcaption{font:500 .7rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.pr{display:grid;grid-template-columns:130px minmax(0,1fr) 56px;gap:10px;align-items:center;font-size:.9rem;margin:6px 0}
+.pr .tr{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.pr .tr i{display:block;height:100%;background:var(--accent)}
+.pr.top .tr i{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.pr.top span:first-child{font-weight:600}
+.pr b{font:500 .82rem var(--f-mono);text-align:right}
+.tp{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--accent-soft);color:var(--ink);font-size:.93rem}
+.res .note{margin-top:14px;font-size:.85rem;color:var(--muted)}
+.res .err{color:var(--warn);background:var(--warn-bg);border-radius:10px;padding:14px 16px}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:860px){.try{grid-template-columns:minmax(0,1fr)}.pr{grid-template-columns:110px minmax(0,1fr) 52px}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}.drop{transition:none}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 5 1V5a2 2 0 0 0-2-1z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-5 1V5a2 2 0 0 1 2-1z"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="4"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+<symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><path d="M8 16v-5M12 16V8M16 16v-8"/></symbol>
+<symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7"/></symbol>
+<symbol id="i-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M8 15h8"/></symbol>
+<symbol id="i-cap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol></defs></svg>
+
+<div class="topnotice"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span>Educational and research project. Not a medical device and not for diagnosis.</span></div>
+
+<header class="bar">
+  <div class="bar-in">
+    <a class="brand" href="#top" aria-label="Brain Tumor MRI Classifier, home"><span class="logo"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg></span><span>Brain Tumor MRI</span></a>
+    <nav id="nav" aria-label="Primary">
+      <a href="#try">Try it</a><a href="#features">Features</a><a href="#pipeline">Pipeline</a><a href="#models">Models</a>
+      <a href="#explain">Grad-CAM</a><a href="#evaluate">Evaluation</a><a href="#run">Quickstart</a>
+      <a href="#faq">FAQ</a><a href="#feedback">Feedback</a>
+    </nav>
+    <a class="btn p nav-cta" href="#try">Try it now</a>
+    <button class="icon-btn" id="theme" aria-label="Toggle light and dark theme" title="Toggle theme"><svg width="18" height="18" viewBox="0 0 18 18" style="margin:auto" aria-hidden="true"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 2a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+    <button class="icon-btn menu-btn" id="menu" aria-label="Open menu" aria-expanded="false" aria-controls="nav"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button>
+  </div>
+</header>
+
+<main class="wrap" id="top">
+
+<div class="hero">
+  <div>
+    <span class="pill"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>PyTorch &middot; Explainable AI</span>
+    <h1>Classify brain MRI scans and <span class="grad">see why</span></h1>
+    <p class="lede">A complete deep-learning project that sorts a brain MRI slice into glioma, meningioma, pituitary tumor or no tumor, then draws a Grad-CAM heat-map of where the network looked.</p>
+    <div class="cta"><a class="btn p" href="#try">Try it now <svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="btn s" href="#pipeline">How it works</a></div>
+    <ul class="trust">
+      <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Open Python code</li>
+      <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Runs on CPU or GPU</li>
+      <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Web app included</li>
+    </ul>
+  </div>
+
+  <div class="viewer" aria-label="Interactive Grad-CAM illustration">
+    <div class="vhead"><span><i></i><i></i><i></i></span><b>Live illustration</b></div>
+    <div class="panes">
+      <figure class="pane" style="margin:0"><canvas id="c-in" width="320" height="320" role="img" aria-label="Synthetic MRI-style slice"></canvas><figcaption>Input</figcaption></figure>
+      <figure class="pane" style="margin:0"><canvas id="c-cam" width="320" height="320" role="img" aria-label="Same slice with Grad-CAM style heat-map"></canvas><figcaption>Grad-CAM overlay</figcaption></figure>
+    </div>
+    <div class="vctl">
+      <div class="seg" id="cls" role="group" aria-label="Illustrated class">
+        <button aria-pressed="true" data-c="glioma">glioma</button>
+        <button aria-pressed="false" data-c="meningioma">meningioma</button>
+        <button aria-pressed="false" data-c="pituitary">pituitary</button>
+        <button aria-pressed="false" data-c="notumor">notumor</button>
+      </div>
+      <label for="alpha">blend <input id="alpha" type="range" min="0" max="100" value="45"><output id="alpha-o">0.45</output></label>
+    </div>
+    <div class="heat-key"></div><div><span>low attention</span><span>high attention</span></div>
+    <p class="vnote">Illustration only. The slice is drawn in your browser. It is not a patient scan and not output from a trained model. It reproduces the project's overlay recipe: a 7&times;7 map, bilinear upsampling, jet colours, 0.45 blend.</p>
+  </div>
+</div>
+
+<div class="facts">
+  <div class="fact"><span class="fi"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg></span><b>4</b><span>tumor classes plus a tumor vs. no-tumor view</span></div>
+  <div class="fact"><span class="fi"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></span><b>4</b><span>architectures: ResNet-18, ResNet-50, EfficientNet-B0, small CNN</span></div>
+  <div class="fact"><span class="fi"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></span><b>~7,000</b><span>MRI images in the Kaggle dataset</span></div>
+  <div class="fact"><span class="fi"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></span><b>224&times;224</b><span>input size with Grad-CAM on every prediction</span></div>
+</div>
+
+<!-- TRY IT -->
+<section id="try">
+  <div class="sec-head c"><span class="eyebrow">Try it</span><h2>Upload an MRI slice and see the prediction</h2>
+  <p class="lede">The image is analysed by the model you trained, on this computer. Nothing is sent to any other server.</p></div>
+  <div class="try">
+    <div>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="image/png,image/jpeg,image/bmp,image/tiff,.jpg,.jpeg,.png,.bmp,.tif,.tiff" aria-label="Choose an MRI image">
+        <span class="ph"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg><br><b>Drop an MRI image here</b><br><small>or click to choose a JPG / PNG (up to 10 MB)</small></span>
+        <img id="prev" alt="Your selected MRI image">
+      </label>
+      <div class="try-actions"><button class="btn p" id="go" type="button" disabled>Analyse <svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></button><span id="fname" class="srv"></span></div>
+      <p class="srv" id="srv" role="status">Checking the model...</p>
+    </div>
+    <div class="res" id="res" aria-live="polite"><div class="empty"><p>Results appear here: class probabilities and a Grad-CAM heat-map.<br><br>Not a medical device. Never use it to diagnose anything.</p></div></div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="sec-head c"><span class="eyebrow">Features</span><h2>Everything from dataset to explained prediction</h2>
+  <p class="lede">One folder of plain Python scripts covers the whole workflow, so you can read, change and rerun every step.</p></div>
+  <div class="feat">
+    <article><span class="ficon a"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg></span><h3>Four-class classification</h3><p>Glioma, meningioma, pituitary tumor or no tumor, with a probability for every class.</p></article>
+    <article><span class="ficon b"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span><h3>Tumor vs. no tumor view</h3><p>A binary report with sensitivity, specificity and a count of missed tumors, the numbers that matter for screening-style use.</p></article>
+    <article><span class="ficon c"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg></span><h3>Grad-CAM heat-maps</h3><p>Implemented from scratch. See which image regions pushed the model toward its answer.</p></article>
+    <article><span class="ficon a"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></span><h3>Four architectures</h3><p>ResNet-18, ResNet-50, EfficientNet-B0 or a small CNN, switched with one flag.</p></article>
+    <article><span class="ficon b"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></span><h3>Careful evaluation</h3><p>Model chosen on validation macro-F1. The test set is scored once. Confusion matrix, ROC curves and a list of every miss.</p></article>
+    <article><span class="ficon c"><svg class="ic" aria-hidden="true"><use href="#i-term"/></svg></span><h3>CLI and web app</h3><p>Predict on a file or folder from the command line, or upload an image in the Gradio app.</p></article>
+  </div>
+
+  <div class="how">
+    <div class="step"><span class="n">1</span><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg><h3>Prepare data</h3><p>Download the Kaggle dataset and check every image opens.</p></div>
+    <div class="step"><span class="n">2</span><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg><h3>Train</h3><p>Warm up the head, fine-tune the network, stop early.</p></div>
+    <div class="step"><span class="n">3</span><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg><h3>Evaluate</h3><p>Score the best checkpoint once on the untouched test set.</p></div>
+    <div class="step"><span class="n">4</span><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><h3>Predict and explain</h3><p>Get probabilities and a heat-map for any new image.</p></div>
+  </div>
+
+  <div class="aud">
+    <div><span class="ficon a"><svg class="ic" aria-hidden="true"><use href="#i-cap"/></svg></span><h3>Students</h3><p>A readable, complete example of transfer learning on medical images.</p></div>
+    <div><span class="ficon b"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg></span><h3>Researchers</h3><p>A baseline to extend with new models, datasets and calibration.</p></div>
+    <div><span class="ficon c"><svg class="ic" aria-hidden="true"><use href="#i-book"/></svg></span><h3>Educators</h3><p>A hands-on way to teach explainability and its limits.</p></div>
+  </div>
+</section>
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <div class="sec-head"><span class="eyebrow">Overview</span><h2>One project, from raw images to an explained prediction</h2>
+  <p class="lede">Everything needed to download data, train, evaluate, predict and demo a classifier lives in one folder of plain Python scripts.</p></div>
+  <div class="trio">
+    <div><h3>Classify</h3><p>Four-way classification into glioma, meningioma, pituitary and no tumor. A binary report folds those into tumor vs. no tumor and gives sensitivity and specificity, the numbers that matter most for a screening-style question.</p></div>
+    <div><h3>Explain</h3><p>Grad-CAM is implemented from scratch with no extra package. Each prediction comes with a heat-map of the image regions that pushed the network toward its answer.</p></div>
+    <div><h3>Use</h3><p>Train with one command, predict on a file or a folder from the command line, or open the Gradio web app, upload an image and read class probabilities next to the heat-map.</p></div>
+  </div>
+
+  <div class="split" style="margin-top:56px">
+    <div>
+      <h3 style="margin-bottom:14px">The four classes</h3>
+      <div class="tbl"><table>
+        <tr><th>Folder</th><th>Meaning</th></tr>
+        <tr><td><code>glioma</code></td><td>Glioma tumor, arising from glial cells in the brain</td></tr>
+        <tr><td><code>meningioma</code></td><td>Meningioma tumor, arising from the meninges, the membranes around the brain</td></tr>
+        <tr><td><code>pituitary</code></td><td>Pituitary tumor, in the pituitary gland at the base of the brain</td></tr>
+        <tr><td><code>notumor</code></td><td>No tumor present</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:14px">The dataset</h3>
+      <p class="lede" style="font-size:.97rem">Brain Tumor MRI Dataset by Masoud Nickparvar on Kaggle. About 7,000 images (roughly 5,700 for training and 1,300 for testing), around 150 MB, combining public collections from figshare, SARTAJ and Br35H. Check its license on the Kaggle page before using it beyond personal learning or research.</p>
+      <pre class="cmd">data/
+  Training/  glioma/ meningioma/ notumor/ pituitary/
+  Testing/   glioma/ meningioma/ notumor/ pituitary/</pre>
+      <p style="margin-top:12px;font-size:.9rem;color:var(--muted)">Any folder with one sub-folder per class also works. Without <code>Training/</code> and <code>Testing/</code>, the code makes a stratified 70/15/15 split.</p>
+    </div>
+  </div>
+
+  <h3 style="margin:56px 0 14px">What is in the folder</h3>
+  <div class="files">
+    <div><code>download_dataset.py</code><span>Downloads the dataset from Kaggle into <code style="font-size:.85em">data/</code></span></div>
+    <div><code>dataset.py</code><span>Loading, augmentation, splits, summary CLI</span></div>
+    <div><code>model.py</code><span>ResNet-18, ResNet-50, EfficientNet-B0, small CNN</span></div>
+    <div><code>train.py</code><span>Warm-up, fine-tuning, early stopping, test run</span></div>
+    <div><code>evaluate.py</code><span>Metrics, confusion matrix, ROC, misclassified list</span></div>
+    <div><code>gradcam.py</code><span>Grad-CAM and heat-map overlay</span></div>
+    <div><code>inference.py</code><span>Load a checkpoint, predict one image</span></div>
+    <div><code>predict.py</code><span>Command-line prediction for a file or folder</span></div>
+    <div><code>web_app.py</code><span>This website, with the working analyser and feedback saving</span></div>
+    <div><code>app.py</code><span>Simple Gradio web app (alternative)</span></div>
+    <div><code>utils.py</code><span>Seeding, device choice, plots, JSON helpers</span></div>
+    <div><code>tools/make_synthetic_data.py</code><span>Tiny fake dataset to test your install</span></div>
+    <div><code>requirements.txt</code><span>Python packages</span></div>
+  </div>
+  <div class="stack">
+    <span class="chip">Python 3.9+</span><span class="chip">PyTorch &ge; 2.0</span><span class="chip">torchvision</span><span class="chip">scikit-learn</span><span class="chip">Gradio</span><span class="chip">matplotlib</span><span class="chip">Pillow</span><span class="chip">NumPy</span><span class="chip">tqdm</span><span class="chip">kagglehub</span>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section id="pipeline" class="band">
+  <div class="sec-head"><span class="eyebrow">Training pipeline</span><h2>Warm up the head, fine-tune everything, test once</h2>
+  <p class="lede">The recipe runs in a fixed order, so the numbered steps below are the real sequence <code>train.py</code> follows.</p></div>
+  <div class="pipe">
+    <ol class="steps">
+      <li><b>Load and preprocess</b><span>Convert each slice to three channels, resize to 224&times;224, normalise with ImageNet statistics.</span></li>
+      <li><b>Augment training images only</b><span>Horizontal flip, rotation up to 10&deg;, 5% shift, 0.95&ndash;1.05 zoom, brightness and contrast jitter of 0.2.</span></li>
+      <li><b>Hold out validation data</b><span>15% of <code>Training/</code> becomes the validation set. <code>Testing/</code> is never used to choose a model.</span></li>
+      <li><b>Warm-up</b><span>With a pre-trained backbone frozen, only the new classification head trains for <code>--freeze_epochs</code> epochs.</span></li>
+      <li><b>Fine-tune</b><span>Everything unfreezes. AdamW with cosine learning-rate decay, class-weighted cross-entropy, label smoothing, gradient clipping, mixed precision on NVIDIA GPUs.</span></li>
+      <li><b>Keep the best checkpoint</b><span>Saved whenever validation macro-F1 improves. Training stops early after <code>--patience</code> epochs without improvement.</span></li>
+      <li><b>Evaluate once on the test set</b><span>The best checkpoint is scored a single time and writes metrics, plots and a list of every misclassified image.</span></li>
+    </ol>
+
+    <div class="panel">
+      <h3>Learning-rate schedule explorer</h3>
+      <p class="sub">Computed with the same rules as <code>train.py</code>: head-only warm-up, then a fresh cosine schedule for fine-tuning. Change a value to see the shape.</p>
+      <div class="ctrls">
+        <label for="s-ep">Epochs<input id="s-ep" type="number" min="2" max="60" value="20"></label>
+        <label for="s-fr">Warm-up epochs<input id="s-fr" type="number" min="0" max="10" value="2"></label>
+        <label for="s-lr">Fine-tune LR<select id="s-lr"><option value="0.0003" selected>3e-4 (default)</option><option value="0.001">1e-3 (small CNN default)</option><option value="0.0001">1e-4</option></select></label>
+        <label for="s-hl">Head LR (warm-up)<select id="s-hl"><option value="0.001" selected>1e-3 (default)</option><option value="0.0005">5e-4</option><option value="0.002">2e-3</option></select></label>
+      </div>
+      <svg class="chart" id="lrsvg" viewBox="0 0 520 260" role="img" aria-label="Learning rate per epoch"></svg>
+      <div class="readout" id="lr-out" aria-live="polite">Hover or tap the chart to read a value.</div>
+    </div>
+  </div>
+
+  <div class="hp">
+    <div><span>Optimizer</span><b>AdamW</b></div>
+    <div><span>Weight decay</span><b>1e-4</b></div>
+    <div><span>Loss</span><b>class-weighted CE</b></div>
+    <div><span>Label smoothing</span><b>0.1</b></div>
+    <div><span>Dropout</span><b>0.3</b></div>
+    <div><span>Gradient clip</span><b>1.0</b></div>
+    <div><span>Batch size</span><b>32</b></div>
+    <div><span>Early stopping</span><b>patience 6</b></div>
+    <div><span>Model selection</span><b>val macro-F1</b></div>
+    <div><span>Random seed</span><b>42</b></div>
+  </div>
+</section>
+
+<!-- MODELS -->
+<section id="models" class="band">
+  <div class="sec-head"><span class="eyebrow">Architectures</span><h2>Four models behind one flag</h2>
+  <p class="lede">Pick a network with <code>--model</code>. The three torchvision models start from ImageNet weights and get a new dropout and linear head for four classes.</p></div>
+  <div class="tabs" role="tablist" id="mtabs"></div>
+  <div class="model" id="mpanel" role="tabpanel"></div>
+</section>
+
+<!-- EXPLAIN -->
+<section id="explain" class="band">
+  <div class="sec-head"><span class="eyebrow">Explainability</span><h2>What the network looked at, and what that does not mean</h2>
+  <p class="lede">Grad-CAM (Selvaraju et al., ICCV 2017) is implemented in <code>gradcam.py</code>. Try the viewer at the top of the page to see the overlay it produces.</p></div>
+  <div class="split">
+    <div>
+      <ol class="steps">
+        <li><b>Hook the last convolutional stage</b><span><code>layer4[-1]</code> for ResNets, <code>features[-1]</code> for EfficientNet-B0 and the small CNN.</span></li>
+        <li><b>Backpropagate the chosen class score</b><span>Capture the activations <code>A</code> and the gradients for the predicted class.</span></li>
+        <li><b>Weight each channel</b><span>Average the gradients over the spatial grid to get one weight per channel.</span></li>
+        <li><b>Combine and rectify</b><span>Weighted sum of channels, then ReLU, scaled so its peak equals 1.</span></li>
+        <li><b>Upsample and blend</b><span>Bilinear resize to the input size, jet colours, 0.45 blend over the image.</span></li>
+      </ol>
+      <div class="formula">L = ReLU( &Sigma;<sub>k</sub> &alpha;<sub>k</sub> &middot; A<sup>k</sup> ),&nbsp; &alpha;<sub>k</sub> = mean<sub>x,y</sub> &part;y<sup>c</sup>/&part;A<sup>k</sup></div>
+    </div>
+    <div class="read">
+      <div class="good"><b>Reasonable behaviour</b><p>Attention lands on or near the abnormal region inside the brain, and moves when the lesion moves.</p></div>
+      <div class="bad"><b>Warning sign</b><p>Attention sits on the skull edge, the background or a scanner marking. The model may be using a shortcut instead of the tumor.</p></div>
+      <div class="bad"><b>Not a segmentation</b><p>The map is coarse. A 7&times;7 grid stretched over the image cannot outline a tumor, and it must not be read as its exact location.</p></div>
+      <div class="bad"><b>Always shows a hot spot</b><p>Because the map is scaled to its own peak, some region lights up red even for a no-tumor image. Check the class probabilities, not only the colours.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- EVALUATION -->
+<section id="evaluate" class="band">
+  <div class="sec-head"><span class="eyebrow">Evaluation</span><h2>Judge it by the missed tumors, not one accuracy number</h2>
+  <p class="lede">The test run writes a full set of files. No trained results ship with this project, so run <code>train.py</code> to fill them with your own numbers.</p></div>
+
+  <div class="split">
+    <div>
+      <div class="tbl"><table>
+        <tr><th>File in <code style="text-transform:none">outputs/</code></th><th>Contents</th></tr>
+        <tr><td><code>best_model.pt</code></td><td>Weights, class names and settings, used by predict and the app</td></tr>
+        <tr><td><code>history.json</code>, <code>training_curves.png</code></td><td>Loss, accuracy and F1 per epoch</td></tr>
+        <tr><td><code>results.json</code></td><td>Best epoch, validation score, test metrics, settings</td></tr>
+        <tr><td><code>test/classification_report.txt</code></td><td>Precision, recall, F1 per class</td></tr>
+        <tr><td><code>test/confusion_matrix.png</code></td><td>Counts and row-normalised matrix</td></tr>
+        <tr><td><code>test/roc_curves.png</code></td><td>One-vs-rest ROC and AUC per class</td></tr>
+        <tr><td><code>test/metrics.json</code></td><td>All metrics, including binary sensitivity and specificity</td></tr>
+        <tr><td><code>test/misclassified.csv</code></td><td>Each wrong test image with its confidence</td></tr>
+      </table></div>
+    </div>
+    <div class="panel">
+      <div class="eg">Example numbers you can edit, not this model's results</div>
+      <h3>Tumor vs. no tumor calculator</h3>
+      <p class="sub">Enter counts the way <code>metrics.json</code> reports them to see how each metric is built.</p>
+      <div class="mx" style="grid-template-columns:1fr">
+        <div class="cm">
+          <span></span><span class="h">Predicted tumor</span><span class="h">Predicted none</span>
+          <span class="h">Has tumor</span>
+          <label for="m-tp">True positive<input id="m-tp" type="number" min="0" value="90"></label>
+          <label class="fn" for="m-fn">Missed tumor (FN)<input id="m-fn" type="number" min="0" value="10"></label>
+          <span class="h">No tumor</span>
+          <label for="m-fp">False alarm (FP)<input id="m-fp" type="number" min="0" value="6"></label>
+          <label for="m-tn">True negative<input id="m-tn" type="number" min="0" value="94"></label>
+        </div>
+        <div class="out" id="mout" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RUN -->
+<section id="run" class="band">
+  <div class="sec-head"><span class="eyebrow">Quickstart</span><h2>From zip file to web app in five commands</h2>
+  <p class="lede">Needs Python 3.9 or newer (3.10 to 3.12 recommended). On an NVIDIA GPU, install the CUDA build of PyTorch from pytorch.org first.</p></div>
+
+  <div class="run"><div><h3>1. Set up</h3><p>Create a virtual environment and install the packages.</p></div>
+    <div class="code"><pre>cd brain_tumor_detection
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt</pre><button class="cp">Copy</button></div></div>
+
+  <div class="run"><div><h3>2. Get the data</h3><p>Automatic download needs a free Kaggle account. Or download the zip manually and move <code>Training</code> and <code>Testing</code> into <code>data/</code>.</p></div>
+    <div class="code"><pre>pip install kagglehub
+python download_dataset.py
+python dataset.py --data_dir data     # counts per class, checks every image opens</pre><button class="cp">Copy</button></div></div>
+
+  <div class="run"><div><h3>3. Train</h3><p>Also runs the single test evaluation at the end. Results land in <code>outputs/</code>.</p></div>
+    <div class="code"><pre>python train.py --data_dir data
+python train.py --data_dir data --model efficientnet_b0 --epochs 25</pre><button class="cp">Copy</button></div></div>
+
+  <div class="run"><div><h3>4. Predict</h3><p>One image or a whole folder. Prints probabilities and saves an input and Grad-CAM figure.</p></div>
+    <div class="code"><pre>python predict.py --image path/to/mri.jpg
+python predict.py --image path/to/folder --save_dir outputs/predictions
+python predict.py --image path/to/mri.jpg --no_cam</pre><button class="cp">Copy</button></div></div>
+
+  <div class="run"><div><h3>5. Website and analyser</h3><p>Opens at 127.0.0.1:8000 with the page you are reading and the working Try-it box. <code>app.py</code> is a simpler Gradio alternative on port 7860.</p></div>
+    <div class="code"><pre>python web_app.py
+python web_app.py --port 8080
+python app.py          # optional Gradio version</pre><button class="cp">Copy</button></div></div>
+
+  <div class="run"><div><h3>Optional: smoke test</h3><p>Trains on cartoon images for a minute or two to prove the install works. The results mean nothing medically.</p></div>
+    <div class="code"><pre>python tools/make_synthetic_data.py --out synthetic_data
+python train.py --data_dir synthetic_data --output_dir outputs_test \
+  --model resnet18 --no_pretrained --epochs 3 --batch_size 16 --num_workers 0</pre><button class="cp">Copy</button></div></div>
+
+  <h3 class="sub-h">The web app at a glance</h3>
+  <div class="appmock" aria-label="Layout of the Gradio app">
+    <div class="col"><b>Input</b><div style="background:var(--bg);border-radius:6px;padding:28px 10px;text-align:center;color:var(--muted)">MRI image (JPG / PNG)</div><div class="btnm">Analyse</div></div>
+    <div class="col"><b>Output</b><span>Class probabilities for all four classes</span><span>Grad-CAM heat-map</span><span>Predicted class with confidence, tumor probability, and the reminder that the map is not an outline</span></div>
+  </div>
+
+  <h3 class="sub-h">Training options</h3>
+  <div class="tbl"><table>
+    <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+    <tr><td><code>--model</code></td><td>resnet18</td><td>resnet18, resnet50, efficientnet_b0 or simple_cnn</td></tr>
+    <tr><td><code>--epochs</code></td><td>20</td><td>Maximum epochs, early stopping may end sooner</td></tr>
+    <tr><td><code>--batch_size</code></td><td>32</td><td>Lower to 16 if memory runs out</td></tr>
+    <tr><td><code>--lr</code></td><td>3e-4 (1e-3 for simple_cnn)</td><td>Fine-tuning learning rate</td></tr>
+    <tr><td><code>--freeze_epochs</code></td><td>2</td><td>Warm-up epochs training only the new head</td></tr>
+    <tr><td><code>--head_lr</code></td><td>1e-3</td><td>Learning rate during warm-up</td></tr>
+    <tr><td><code>--img_size</code></td><td>224</td><td>Input resolution</td></tr>
+    <tr><td><code>--patience</code></td><td>6</td><td>Early-stopping patience</td></tr>
+    <tr><td><code>--no_pretrained</code></td><td>off</td><td>Train from scratch instead of ImageNet weights</td></tr>
+    <tr><td><code>--num_workers</code></td><td>min(4, CPUs)</td><td>Use 0 on Windows if multiprocessing errors appear</td></tr>
+    <tr><td><code>--device</code></td><td>auto</td><td>auto, cpu, cuda or mps</td></tr>
+    <tr><td><code>--output_dir</code></td><td>outputs</td><td>Where results are written</td></tr>
+  </table></div>
+
+  <h3 class="sub-h">Hardware and time</h3>
+  <p class="lede">With ResNet-18 on about 5,700 images, a recent NVIDIA GPU takes well under a minute per epoch. A laptop CPU takes several minutes per epoch, so budget roughly an hour for 10 to 15 epochs. With no GPU, use a free Google Colab or Kaggle Notebook with a GPU runtime and download <code>outputs/best_model.pt</code> afterwards.</p>
+
+  <h3 class="sub-h">Troubleshooting</h3>
+  <div>
+    <details><summary>FileNotFoundError: Data directory ... <span></span></summary><p>The dataset is not in <code>data/</code>. Follow step 2, then run <code>python dataset.py --data_dir data</code>.</p></details>
+    <details><summary>Kaggle download fails or asks for a login</summary><p>Create an API token at kaggle.com/settings and put <code>kaggle.json</code> in <code>~/.kaggle/</code>, or set <code>KAGGLE_USERNAME</code> and <code>KAGGLE_KEY</code>. You can also download the dataset by hand.</p></details>
+    <details><summary>Could not load pre-trained weights</summary><p>There is no internet for the ImageNet download. Connect and retry. Otherwise training starts from random weights and accuracy will be lower.</p></details>
+    <details><summary>Windows errors mentioning multiprocessing or workers</summary><p>Add <code>--num_workers 0</code>.</p></details>
+    <details><summary>CUDA out of memory</summary><p>Use <code>--batch_size 16</code> or 8, or switch to <code>resnet18</code>.</p></details>
+    <details><summary>Checkpoint not found</summary><p>Run <code>train.py</code> first. The default path is <code>outputs/best_model.pt</code>.</p></details>
+    <details><summary>Port 7860 is already in use</summary><p>Run <code>python app.py --port 7861</code>.</p></details>
+  </div>
+</section>
+
+<!-- LIMITS -->
+<section id="limits" class="band">
+  <div class="sec-head"><span class="eyebrow">Limitations and responsible use</span><h2>What a good score on a public dataset does not tell you</h2></div>
+  <div class="lim">
+    <div><h3>No real-world accuracy is claimed</h3><p>The project was code-tested end to end on synthetic images: training, evaluation, Grad-CAM, prediction, the web app and all four architectures. It was not trained on the real dataset where it was written. ImageNet-pretrained CNNs commonly reach high accuracy on this kind of task, but your numbers will vary with model, seed and epochs.</p></div>
+    <div><h3>Public data has blind spots</h3><p>Scans from other hospitals, scanners, protocols or patient groups can behave very differently. Public datasets can hold duplicates and near-duplicates, and the labels are not clinically re-verified here.</p></div>
+    <div><h3>Read the whole report</h3><p>Trust the per-class table, the confusion matrix and the missed-tumor count more than one accuracy figure. Glioma vs. meningioma is a common confusion.</p></div>
+  </div>
+  <h3 style="margin:48px 0 12px">Ideas to improve it</h3>
+  <ul class="plain">
+    <li>Train longer with <code>efficientnet_b0</code> or <code>resnet50</code>, or try <code>--img_size 256</code> or <code>300</code>.</li>
+    <li>Use k-fold cross-validation and an ensemble of models.</li>
+    <li>Check the dataset for duplicate images across train and test.</li>
+    <li>Evaluate on an external dataset from a different source.</li>
+    <li>Add calibration such as temperature scaling so confidence values are more trustworthy.</li>
+    <li>Move to 3D, multi-sequence MRI models for clinical-style work.</li>
+  </ul>
+</section>
+
+
+<!-- FAQ -->
+<section id="faq" class="band">
+  <div class="sec-head c"><span class="eyebrow">FAQ</span><h2>Frequently asked questions</h2>
+  <p class="lede">Short answers to what people ask first. Still stuck? Send a note through the feedback form below.</p></div>
+  <div class="faq">
+    <details open><summary>Can I use this to diagnose a tumor?</summary><p>No. It is an educational and research project, not a medical device. Never use it to diagnose, rule out or make decisions about any medical condition. Always rely on a qualified radiologist or physician.</p></details>
+    <details><summary>How accurate is it?</summary><p>No trained results ship with the project, so there is no accuracy figure to quote. ImageNet-pretrained CNNs commonly score high on this kind of dataset, but your numbers will vary with model, seed and epochs. After training, read the per-class report, the confusion matrix and the missed-tumor count, not one accuracy number.</p></details>
+    <details><summary>Which dataset does it use?</summary><p>The Brain Tumor MRI Dataset by Masoud Nickparvar on Kaggle, about 7,000 images in four classes. Check its license and terms on Kaggle before using it beyond personal learning or research.</p></details>
+    <details><summary>Do I need a GPU?</summary><p>No, but training on a CPU is slow. Budget roughly an hour for 10 to 15 ResNet-18 epochs on a laptop. A free Google Colab or Kaggle Notebook with a GPU runtime finishes an epoch in well under a minute on a recent NVIDIA card.</p></details>
+    <details><summary>Which model should I start with?</summary><p><code>resnet18</code>. It is the default, light and fast. Try <code>efficientnet_b0</code> or <code>resnet50</code> once the pipeline works, and <code>simple_cnn</code> if you want a from-scratch comparison.</p></details>
+    <details><summary>What does the heat-map actually show?</summary><p>The image regions that influenced the model's decision. It is not a tumor outline or location. It is also scaled to its own peak, so some area looks hot even on a no-tumor image. If it highlights the skull edge or background, the model may be using a shortcut.</p></details>
+    <details><summary>Can I train on my own dataset?</summary><p>Yes. Any folder with one sub-folder per class works. Without <code>Training/</code> and <code>Testing/</code> folders the code makes a stratified 70/15/15 split. The tumor vs. no-tumor report only appears when a class is named <code>notumor</code>.</p></details>
+    <details><summary>Why is the model picked on validation macro-F1?</summary><p>Macro-F1 averages the score of every class equally, so a rare class is not hidden by a common one. The test set is never used for model selection. The best checkpoint is scored on it exactly once.</p></details>
+    <details><summary>Is it safe to upload real patient scans to the web app?</summary><p>The app runs on your own machine by default. Do not use <code>--share</code> with patient images, because it creates a temporary public link. Follow the privacy and medical-data rules that apply to you.</p></details>
+    <details><summary>Will I get the same results every time?</summary><p>Random seeds are set (default 42), which keeps runs close to repeatable. GPU operations and different hardware can still cause small differences.</p></details>
+    <details><summary>What license is the project under?</summary><p>The code is provided for learning and research with no warranty. The dataset has its own license on Kaggle, and you are responsible for following it.</p></details>
+  </div>
+</section>
+
+<!-- FEEDBACK -->
+<section id="feedback" class="band">
+  <div class="fbwrap">
+    <div>
+      <span class="eyebrow">Feedback</span>
+      <h2 style="margin:12px 0 14px">Tell us what would make this better</h2>
+      <p class="lede">Found a bug, want a feature, or have a question about the project? Send a note. Name and email are optional.</p>
+      <ul class="fbpts">
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Suggestions and bug reports are both welcome</li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Do not include patient data or personal medical details</li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Saved on the computer running the site, in a <code>feedback.jsonl</code> file</li>
+      </ul>
+    </div>
+    <form class="fb" id="fb-form" novalidate>
+      <div class="two">
+        <label for="fb-name">Name (optional)<input id="fb-name" type="text" maxlength="80" autocomplete="name"></label>
+        <label for="fb-mail">Email (optional)<input id="fb-mail" type="email" maxlength="120" autocomplete="email"></label>
+      </div>
+      <div class="two">
+        <label for="fb-type">Topic<select id="fb-type"><option>Suggestion</option><option>Bug report</option><option>Question</option><option>Praise</option><option>Other</option></select></label>
+        <div class="rate"><span id="rate-l">How useful is this project?</span>
+          <div class="stars" role="radiogroup" aria-labelledby="rate-l">
+            <input type="radio" name="rate" id="r5" value="5"><label for="r5" title="5 stars"><span class="sr">5 stars</span>&#9733;</label>
+            <input type="radio" name="rate" id="r4" value="4"><label for="r4" title="4 stars"><span class="sr">4 stars</span>&#9733;</label>
+            <input type="radio" name="rate" id="r3" value="3"><label for="r3" title="3 stars"><span class="sr">3 stars</span>&#9733;</label>
+            <input type="radio" name="rate" id="r2" value="2"><label for="r2" title="2 stars"><span class="sr">2 stars</span>&#9733;</label>
+            <input type="radio" name="rate" id="r1" value="1"><label for="r1" title="1 star"><span class="sr">1 star</span>&#9733;</label>
+          </div>
+        </div>
+      </div>
+      <label for="fb-msg">Message<textarea id="fb-msg" rows="5" maxlength="1000" required placeholder="What worked, what did not, what you would add"></textarea></label>
+      <div class="fb-foot"><button class="btn p" type="submit" id="fb-send">Send feedback</button><span id="fb-status" role="status" aria-live="polite"></span></div>
+    </form>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="fgrid">
+    <div>
+      <a class="brand" href="#top"><span class="logo"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg></span><span>Brain Tumor MRI</span></a>
+      <p style="margin-top:12px;max-width:34ch">A PyTorch project for classifying brain MRI slices, with Grad-CAM explanations. For learning and research.</p>
+    </div>
+    <div><h4>Project</h4><a href="#features">Features</a><a href="#overview">Dataset</a><a href="#pipeline">Pipeline</a><a href="#models">Models</a></div>
+    <div><h4>Learn</h4><a href="#explain">Grad-CAM</a><a href="#evaluate">Evaluation</a><a href="#run">Quickstart</a><a href="#limits">Limitations</a></div>
+    <div><h4>Resources</h4>
+      <a href="https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset" target="_blank" rel="noopener">Kaggle dataset <svg class="ic sm" aria-hidden="true"><use href="#i-ext"/></svg></a>
+      <a href="https://arxiv.org/abs/1610.02391" target="_blank" rel="noopener">Grad-CAM paper <svg class="ic sm" aria-hidden="true"><use href="#i-ext"/></svg></a>
+      <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">Install PyTorch <svg class="ic sm" aria-hidden="true"><use href="#i-ext"/></svg></a>
+      <a href="https://www.gradio.app/" target="_blank" rel="noopener">Gradio <svg class="ic sm" aria-hidden="true"><use href="#i-ext"/></svg></a>
+    </div>
+    <div><h4>Support</h4><a href="#faq">FAQ</a><a href="#feedback">Send feedback</a></div>
+  </div>
+  <div class="fbase">
+    <p><b>Medical disclaimer.</b> This is an educational and research project, not a medical device. It must never be used to diagnose, rule out or make decisions about any medical condition. Always rely on a qualified radiologist or physician.</p>
+    <p>Code is provided for learning and research, with no warranty. The dataset has its own license on Kaggle. Dataset by Masoud Nickparvar. Method: Selvaraju et al., Grad-CAM, ICCV 2017.</p>
+  </div>
+</footer>
+</main>
+
+<a class="totop" id="totop" href="#top" aria-label="Back to top" hidden><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></a>
+
+<script>
+/* ---------- theme toggle ---------- */
+(function(){
+  var b=document.getElementById('theme'),r=document.documentElement;
+  b.addEventListener('click',function(){
+    var dark=r.getAttribute('data-theme')?r.getAttribute('data-theme')==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+    r.setAttribute('data-theme',dark?'light':'dark');
+  });
+})();
+
+/* ---------- copy buttons ---------- */
+document.querySelectorAll('.code').forEach(function(w){
+  var pre=w.querySelector('pre'),btn=w.querySelector('.cp');
+  btn.addEventListener('click',function(){
+    var done=function(){btn.textContent='Copied';setTimeout(function(){btn.textContent='Copy'},1500)};
+    var fallback=function(){var s=getSelection(),rg=document.createRange();rg.selectNodeContents(pre);s.removeAllRanges();s.addRange(rg);btn.textContent='Selected';setTimeout(function(){btn.textContent='Copy'},1500)};
+    try{navigator.clipboard.writeText(pre.innerText).then(done,fallback)}catch(e){fallback()}
+  });
+});
+
+/* ---------- procedural scan + Grad-CAM style overlay ---------- */
+(function(){
+  var N=320,cIn=document.getElementById('c-in'),cCam=document.getElementById('c-cam');
+  var gIn=cIn.getContext('2d'),gCam=cCam.getContext('2d');
+  function hash(x,y,s){var h=(Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(s,982451653))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return ((h>>>0)&0xffff)/65535}
+  function vn(x,y,s){var xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+    var a=hash(xi,yi,s),b=hash(xi+1,yi,s),c=hash(xi,yi+1,s),d=hash(xi+1,yi+1,s);return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
+  function ss(a,b,x){var t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)}
+  var LES={ /* centre and radius in normalised slice coordinates */
+    glioma:{x:.33,y:-.22,r:.17,irr:true},
+    meningioma:{x:-.58,y:-.42,r:.13,irr:false},
+    pituitary:{x:0,y:.30,r:.07,irr:false},
+    notumor:null};
+  var HEAT={glioma:{x:.33,y:-.22,s:.19},meningioma:{x:-.58,y:-.42,s:.17},pituitary:{x:0,y:.30,s:.15}};
+  var base=new Uint8ClampedArray(N*N),cam=new Float32Array(N*N),cur='glioma';
+
+  function makeBase(cls){
+    var L=LES[cls];
+    for(var y=0;y<N;y++)for(var x=0;x<N;x++){
+      var nx=(x-N/2)/(N/2),ny=(y-N/2)/(N/2)*1.0;
+      var r=Math.sqrt((nx/.80)*(nx/.80)+(ny/.92)*(ny/.92)),v=0;
+      if(r>1.08)v=6;
+      else if(r>1.0)v=70*(1.08-r)/.08+8;
+      else if(r>.93)v=205+10*vn(x/6,y/6,9);
+      else if(r>.90)v=34;
+      else{
+        var cx=ss(.42,.84,r);
+        var n=vn(x/10,y/10,1)*.55+vn(x/5,y/5,2)*.3+vn(x/2.4,y/2.4,3)*.15;
+        v=158-52*cx+22*(n-.5)*(.4+cx);
+        var ridge=Math.abs(n-.5);
+        if(ridge<.05)v-=62*(1-ridge/.05)*cx;
+        if(Math.abs(nx)<.012&&ny<.15&&ny>-.8)v*=.55;
+        [-1,1].forEach(function(sg){
+          var ex=(nx-sg*.14)/.07,ey=(ny+.10)/.22,e=ex*ex+ey*ey;
+          if(e<1)v=v*(e)+26*(1-e);
+        });
+        if(L){
+          var dx=nx-L.x,dy=ny-L.y,th=Math.atan2(dy,dx);
+          var rad=L.r*(L.irr?1+.2*Math.sin(3*th+1.2)+.1*Math.sin(5*th+.4):1);
+          var d=Math.hypot(dx,dy)/rad;
+          if(L.irr&&d<1.7&&d>=1)v=v*(1-.28*(1-ss(1,1.7,d)));
+          if(d<1){
+            var core=L.irr?(d<.5?150:215):(205);
+            v=v*ss(.85,1,d)+core*(1-ss(.85,1,d));
+          }
+        }
+      }
+      v+=(hash(x,y,5)-.5)*12;
+      base[y*N+x]=Math.max(0,Math.min(255,v));
+    }
+  }
+  function makeCam(cls){
+    var G=7,g=new Float32Array(G*G),H=HEAT[cls];
+    for(var j=0;j<G;j++)for(var i=0;i<G;i++){
+      var px=((i+.5)/G-.5)*2,py=((j+.5)/G-.5)*2,val;
+      if(H){
+        var d=Math.hypot(px-(H.x+.03),py-(H.y-.02));
+        val=Math.exp(-d*d/(2*H.s*H.s))+.12*vn(i*1.7,j*1.7,4);
+      }else{ /* no tumor: weak, diffuse attention that is still rescaled to its own peak */
+        val=.35+.45*vn(i*.9+3,j*.9+1,7)+.15*Math.exp(-(px*px+py*py)/.5);
+      }
+      g[j*G+i]=Math.max(0,val);
+    }
+    var pk=0;for(var k=0;k<g.length;k++)pk=Math.max(pk,g[k]);
+    for(var k=0;k<g.length;k++)g[k]/=pk;
+    for(var y=0;y<N;y++){
+      var fy=(y+.5)/N*G-.5,y0=Math.floor(fy),ty=fy-y0,ya=Math.max(0,Math.min(G-1,y0)),yb=Math.max(0,Math.min(G-1,y0+1));
+      for(var x=0;x<N;x++){
+        var fx=(x+.5)/N*G-.5,x0=Math.floor(fx),tx=fx-x0,xa=Math.max(0,Math.min(G-1,x0)),xb=Math.max(0,Math.min(G-1,x0+1));
+        cam[y*N+x]=(g[ya*G+xa]*(1-tx)+g[ya*G+xb]*tx)*(1-ty)+(g[yb*G+xa]*(1-tx)+g[yb*G+xb]*tx)*ty;
+      }
+    }
+  }
+  var lut=[];for(var i=0;i<256;i++){var t=i/255,c=function(o){return Math.max(0,Math.min(1,1.5-Math.abs(4*t-o)))};lut.push([c(3)*255,c(2)*255,c(1)*255])}
+  function draw(){
+    var a=+document.getElementById('alpha').value/100,im=gIn.createImageData(N,N),om=gCam.createImageData(N,N);
+    for(var p=0;p<N*N;p++){
+      var v=base[p],q=p*4,h=lut[Math.round(cam[p]*255)];
+      im.data[q]=im.data[q+1]=im.data[q+2]=v;im.data[q+3]=255;
+      om.data[q]=(1-a)*v+a*h[0];om.data[q+1]=(1-a)*v+a*h[1];om.data[q+2]=(1-a)*v+a*h[2];om.data[q+3]=255;
+    }
+    gIn.putImageData(im,0,0);gCam.putImageData(om,0,0);
+  }
+  function setClass(c){cur=c;makeBase(c);makeCam(c);draw()}
+  document.querySelectorAll('#cls button').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('#cls button').forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false')});
+      setClass(b.dataset.c);
+    });
+  });
+  var al=document.getElementById('alpha');
+  al.addEventListener('input',function(){document.getElementById('alpha-o').textContent=(al.value/100).toFixed(2);draw()});
+  setClass('glioma');
+})();
+
+/* ---------- learning-rate explorer (mirrors train.py) ---------- */
+(function(){
+  var svg=document.getElementById('lrsvg'),out=document.getElementById('lr-out');
+  var W=520,H=260,L=52,R=12,T=14,B=34,pts=[],fz=0;
+  function sched(ep,freeze,lr,hlr){
+    freeze=Math.max(0,Math.min(freeze,ep-1));var o=[];
+    for(var e=1;e<=ep;e++){
+      var v;
+      if(freeze>0&&e<=freeze){var T1=Math.max(1,freeze);v=hlr*(1+Math.cos(Math.PI*(e-1)/T1))/2}
+      else{var s=freeze>0?freeze:0,T2=Math.max(1,ep-s);v=lr*(1+Math.cos(Math.PI*(e-1-s)/T2))/2}
+      o.push(v);
+    }
+    return {v:o,freeze:freeze};
+  }
+  function fmt(v){return v.toExponential(2).replace('e-','e-')}
+  function render(){
+    var ep=Math.max(2,Math.min(60,+document.getElementById('s-ep').value||20)),
+        fr=Math.max(0,Math.min(10,+document.getElementById('s-fr').value||0)),
+        lr=+document.getElementById('s-lr').value,hl=+document.getElementById('s-hl').value;
+    var s=sched(ep,fr,lr,hl);pts=s.v;fz=s.freeze;
+    var ymax=Math.max.apply(null,pts)*1.1,iw=W-L-R,ih=H-T-B;
+    var X=function(e){return L+(e-1)/(ep-1)*iw},Y=function(v){return T+ih-(v/ymax)*ih};
+    var h='';
+    for(var k=0;k<=4;k++){var yv=ymax*k/4,yy=Y(yv);h+='<line class="gl" x1="'+L+'" x2="'+(W-R)+'" y1="'+yy+'" y2="'+yy+'"/><text x="'+(L-6)+'" y="'+(yy+4)+'" text-anchor="end">'+(yv*1e4).toFixed(1)+'</text>'}
+    var step=ep<=20?2:ep<=40?5:10;
+    for(var e=1;e<=ep;e++){if(e===1||e%step===0)h+='<text x="'+X(e)+'" y="'+(H-12)+'" text-anchor="middle">'+e+'</text>'}
+    if(fz>0){h+='<rect x="'+(X(1)-6)+'" y="'+T+'" width="'+(X(fz)-X(1)+12+ (iw/(ep-1))/2)+'" height="'+ih+'" fill="var(--accent-soft)" opacity=".8"/><text x="'+(X(1))+'" y="'+(T+12)+'" style="fill:var(--accent)">warm-up: head only</text>'}
+    var d=pts.map(function(v,i){return (i?'L':'M')+X(i+1).toFixed(1)+' '+Y(v).toFixed(1)}).join(' ');
+    h+='<path d="'+d+'" fill="none" stroke="var(--accent)" stroke-width="2"/>';
+    pts.forEach(function(v,i){h+='<circle cx="'+X(i+1).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="3" fill="var(--accent)"/>'});
+    h+='<text x="'+L+'" y="'+(T-2)+'" style="font-size:10px">LR &times; 1e-4</text><text x="'+(W-R)+'" y="'+(H-1)+'" text-anchor="end">epoch</text>';
+    h+='<line id="hv" class="gl" y1="'+T+'" y2="'+(T+ih)+'" x1="-10" x2="-10" stroke="var(--ink)" style="stroke:var(--ink)"/>';
+    svg.innerHTML=h;svg._X=X;svg._ep=ep;
+    out.textContent=(fr>=ep?'Warm-up is capped at '+(ep-1)+' epochs. ':'')+'Epoch 1 starts at '+fmt(pts[0])+'; the last epoch ends at '+fmt(pts[pts.length-1])+'.';
+  }
+  function probe(ev){
+    var r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width*W,ep=svg._ep;
+    var e=Math.round((px-L)/(W-L-R)*(ep-1))+1;e=Math.max(1,Math.min(ep,e));
+    var hv=svg.querySelector('#hv'),x=svg._X(e);hv.setAttribute('x1',x);hv.setAttribute('x2',x);
+    out.textContent='Epoch '+e+' of '+ep+': lr = '+fmt(pts[e-1])+(e<=fz?'  (head only)':'  (fine-tuning)');
+  }
+  svg.addEventListener('pointermove',probe);svg.addEventListener('pointerdown',probe);
+  ['s-ep','s-fr','s-lr','s-hl'].forEach(function(id){document.getElementById(id).addEventListener('input',render)});
+  render();
+})();
+
+/* ---------- models ---------- */
+(function(){
+  var M={
+    resnet18:{n:'ResNet-18',p:'About 11.2M',pre:'ImageNet',head:'Dropout + Linear(512, 4)',cam:'layer4[-1]',
+      d:'The default. Light, fast and a strong baseline for a dataset of this size. Start here, especially on CPU or a small GPU.',cmd:'python train.py --data_dir data --model resnet18 --epochs 20'},
+    resnet50:{n:'ResNet-50',p:'About 23.5M',pre:'ImageNet',head:'Dropout + Linear(2048, 4)',cam:'layer4[-1]',
+      d:'A deeper network that is usually a little more accurate and needs more memory and time per epoch. Lower the batch size if the GPU runs out of memory.',cmd:'python train.py --data_dir data --model resnet50 --batch_size 16'},
+    efficientnet_b0:{n:'EfficientNet-B0',p:'About 4.0M',pre:'ImageNet',head:'Dropout + Linear(1280, 4)',cam:'features[-1]',
+      d:'Accurate and compact. The smallest of the pre-trained options, so it is a good choice when model size matters.',cmd:'python train.py --data_dir data --model efficientnet_b0 --epochs 25'},
+    simple_cnn:{n:'Small CNN',p:'About 1.17M',pre:'None, trains from scratch',head:'Flatten + Dropout(0.4) + Linear(256, 4)',cam:'features[-1]',
+      d:'Four convolution blocks of two 3×3 convolutions each, with batch norm, max pooling and global average pooling. Built for learning and for comparing against the pre-trained networks.',cmd:'python train.py --data_dir data --model simple_cnn --no_pretrained --epochs 40'}
+  };
+  var tabs=document.getElementById('mtabs'),panel=document.getElementById('mpanel');
+  function show(k){
+    var m=M[k];
+    tabs.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-selected',b.dataset.k===k?'true':'false')});
+    panel.innerHTML='<div><h3>'+m.n+'</h3><p>'+m.d+'</p><code class="cmd">'+m.cmd+'</code></div>'+
+      '<dl class="kv"><div><dt>Flag</dt><dd><code>--model '+k+'</code></dd></div><div><dt>Parameters</dt><dd>'+m.p+' (4-class head)</dd></div><div><dt>Weights</dt><dd>'+m.pre+'</dd></div><div><dt>New head</dt><dd>'+m.head+'</dd></div><div><dt>Grad-CAM layer</dt><dd><code>'+m.cam+'</code></dd></div></dl>';
+  }
+  Object.keys(M).forEach(function(k){
+    var b=document.createElement('button');b.textContent=M[k].n;b.dataset.k=k;b.setAttribute('role','tab');
+    b.addEventListener('click',function(){show(k)});tabs.appendChild(b);
+  });
+  show('resnet18');
+})();
+
+/* ---------- metrics calculator ---------- */
+(function(){
+  var ids=['tp','fn','fp','tn'],out=document.getElementById('mout');
+  function pct(n,d){return d>0?n/d:0}
+  function row(label,val,note){return '<div class="m"><span>'+label+'</span><b>'+(val*100).toFixed(1)+'%</b><div class="bar2"><i style="width:'+(val*100).toFixed(1)+'%"></i></div><small>'+note+'</small></div>'}
+  function calc(){
+    var v={};ids.forEach(function(k){v[k]=Math.max(0,Math.floor(+document.getElementById('m-'+k).value||0))});
+    out.innerHTML=
+      row('Sensitivity (recall)',pct(v.tp,v.tp+v.fn),'Share of real tumors caught: TP / (TP + FN). '+v.fn+' missed.')+
+      row('Specificity',pct(v.tn,v.tn+v.fp),'Share of healthy scans cleared: TN / (TN + FP). '+v.fp+' false alarms.')+
+      row('Precision',pct(v.tp,v.tp+v.fp),'Of the scans flagged as tumor, how many really had one.')+
+      row('Accuracy',pct(v.tp+v.tn,v.tp+v.tn+v.fp+v.fn),'Overall share correct. It can look good even when tumors are missed.');
+  }
+  ids.forEach(function(k){document.getElementById('m-'+k).addEventListener('input',calc)});
+  calc();
+})();
+
+/* ---------- v2: mobile menu, scrollspy, back-to-top ---------- */
+(function(){
+  var nav=document.getElementById('nav'),btn=document.getElementById('menu');
+  function setOpen(o){nav.classList.toggle('open',o);btn.setAttribute('aria-expanded',o?'true':'false');btn.setAttribute('aria-label',o?'Close menu':'Open menu');btn.querySelector('use').setAttribute('href',o?'#i-x':'#i-menu')}
+  btn.addEventListener('click',function(){setOpen(!nav.classList.contains('open'))});
+  nav.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setOpen(false)})});
+  var links={};nav.querySelectorAll('a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a});
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){
+      if(e.isIntersecting){Object.keys(links).forEach(function(k){links[k].classList.toggle('on',k===e.target.id)})}
+    })},{rootMargin:'-35% 0px -60% 0px'});
+    Object.keys(links).forEach(function(k){var s=document.getElementById(k);if(s)io.observe(s)});
+  }
+  var tt=document.getElementById('totop');
+  addEventListener('scroll',function(){tt.hidden=scrollY<900},{passive:true});
+})();
+
+/* ---------- feedback form: saved by web_app.py ---------- */
+(function(){
+  var form=document.getElementById('fb-form'),st=document.getElementById('fb-status'),send=document.getElementById('fb-send');
+  function say(t,c){st.textContent=t;st.className=c||''}
+  form.addEventListener('submit',async function(ev){
+    ev.preventDefault();
+    var msg=document.getElementById('fb-msg').value.trim(),mail=document.getElementById('fb-mail').value.trim();
+    if(msg.length<5){say('Please write a short message first.','err');document.getElementById('fb-msg').focus();return}
+    if(mail&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)){say('That email address does not look right.','err');document.getElementById('fb-mail').focus();return}
+    var r=form.querySelector('input[name=rate]:checked');
+    send.disabled=true;say('Sending...');
+    try{
+      var res=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        name:document.getElementById('fb-name').value.trim().slice(0,80),
+        email:mail,
+        topic:document.getElementById('fb-type').value,
+        rating:r?+r.value:null,
+        message:msg.slice(0,1000)
+      })});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      form.reset();say('Thank you. Your feedback was saved.','ok');
+    }catch(e){
+      say(location.protocol==='file:'?'Start the site with "python web_app.py" and open it at http://127.0.0.1:8000 to save feedback.':'Could not save right now. Please try again.','err');
+    }
+    send.disabled=false;
+  });
+})();
+
+/* ---------- Try it: upload, predict, show Grad-CAM ---------- */
+(function(){
+  var drop=document.getElementById('drop'),file=document.getElementById('file'),prev=document.getElementById('prev'),
+      go=document.getElementById('go'),res=document.getElementById('res'),srv=document.getElementById('srv'),fname=document.getElementById('fname');
+  var chosen=null,ready=false;
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+  function pct(x){return (x*100).toFixed(1)+'%'}
+  function setBtn(){go.disabled=!(chosen&&ready)}
+  function showErr(msg){res.replaceChildren();res.appendChild(el('div','err',msg))}
+
+  fetch('/api/status').then(function(r){return r.json()}).then(function(s){
+    ready=!!s.ready;
+    if(ready){srv.textContent='Model ready: '+s.model+' on '+s.device+'.';srv.className='srv'}
+    else{srv.className='srv bad';srv.textContent=s.message||(s.reason==='no_model'?'No trained model found yet. Run "python train.py --data_dir data", then restart this site.':'The model file could not be loaded. Retrain, then restart this site.')}
+    setBtn();
+  }).catch(function(){
+    srv.className='srv bad';
+    srv.textContent=location.protocol==='file:'?'This page was opened as a file. Run "python web_app.py" and open http://127.0.0.1:8000 to use the analyser.':'Cannot reach the server.';
+  });
+
+  function pick(f){
+    if(!f)return;
+    function reject(m){chosen=null;fname.textContent='';drop.classList.remove('has');prev.removeAttribute('src');file.value='';setBtn();showErr(m)}
+    if(!/^image\//.test(f.type)&&!/\.(jpe?g|png|bmp|tiff?)$/i.test(f.name)){reject('Please choose an image file (JPG or PNG).');return}
+    if(f.size>10*1024*1024){reject('That image is larger than 10 MB.');return}
+    chosen=f;fname.textContent=f.name;
+    if(prev.dataset.u)URL.revokeObjectURL(prev.dataset.u);
+    var u=URL.createObjectURL(f);prev.dataset.u=u;prev.src=u;drop.classList.add('has');setBtn();
+  }
+  file.addEventListener('change',function(){pick(file.files[0])});
+  ['dragenter','dragover'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.add('over')})});
+  ['dragleave','drop'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.remove('over')})});
+  drop.addEventListener('drop',function(e){var f=e.dataTransfer&&e.dataTransfer.files[0];if(f){try{var dt=new DataTransfer();dt.items.add(f);file.files=dt.files}catch(x){}pick(f)}});
+
+  go.addEventListener('click',async function(){
+    if(!chosen)return;
+    go.disabled=true;res.replaceChildren();
+    var w=el('div','empty');var p=el('p');p.appendChild(el('span','spin'));p.appendChild(document.createTextNode('Analysing...'));w.appendChild(p);res.appendChild(w);
+    try{
+      var fd=new FormData();fd.append('image',chosen);fd.append('file',chosen); /* app.py reads 'image', web_app.py reads 'file' */
+      var r=await fetch('/api/predict',{method:'POST',body:fd});
+      var d=await r.json().catch(function(){return {}});
+      if(!r.ok)throw new Error(d.error||d.detail||('Server error '+r.status));
+      render(d);
+    }catch(e){showErr(e.message||'Something went wrong.')}
+    setBtn();
+  });
+
+  function render(d){
+    res.replaceChildren();
+    res.appendChild(el('h3',null,d.label_pretty));
+    res.appendChild(el('p','conf',pct(d.confidence)+' confidence'+(d.model?' ('+d.model+')':'')));
+    d.probs.forEach(function(x,i){
+      var row=el('div','pr'+(i===0?' top':''));
+      row.appendChild(el('span',null,x.name));
+      var tr=el('div','tr'),bar=el('i');bar.style.width=(x.p*100).toFixed(1)+'%';tr.appendChild(bar);row.appendChild(tr);
+      row.appendChild(el('b',null,pct(x.p)));res.appendChild(row);
+    });
+    if(d.tumor_probability!=null){
+      res.appendChild(el('div','tp','Tumor probability: '+pct(d.tumor_probability)+(d.tumor_detected?' - a tumor pattern was detected.':' - no tumor pattern detected.')));
+    }
+    var imgs=el('div','imgs');
+    [['Input',d.original],['Grad-CAM overlay',d.overlay]].forEach(function(a){
+      var f=el('figure'),im=el('img');im.src=a[1];im.alt=a[0];f.appendChild(im);f.appendChild(el('figcaption',null,a[0]));imgs.appendChild(f);
+    });
+    res.appendChild(imgs);
+    res.appendChild(el('p','note','The heat-map shows where the model looked. It is not a tumor outline. Educational demo, not a medical device: never use it to diagnose or make health decisions.'));
+  }
+})();
+</script>
+</body>
+</html>

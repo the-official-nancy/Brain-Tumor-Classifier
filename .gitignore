@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+outputs/
+synthetic_data/
+data/Training/
+data/Testing/
+.ipynb_checkpoints/
+feedback/
+outputs_test/
+.vscode/
+*.zip
+*.pt
+kaggle.json
+.env
